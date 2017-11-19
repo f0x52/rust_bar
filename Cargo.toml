@@ -1,0 +1,7 @@
+[package]
+name = "rust_bar"
+version = "0.1.0"
+authors = ["f0x <f0x@firemail.cc>"]
+
+[dependencies]
+time = "0.1"
