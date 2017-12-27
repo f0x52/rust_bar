@@ -82,8 +82,6 @@ fn nowplaying(fg: &str, ac: &str) -> String {
 fn telegram_unread(fg: &str, ac: &str) -> String {
     let re = Regex::new(r"\((\d+)\)").unwrap();
     let mut output = String::new();
-    if fg && ac {
-    }
     let process = Command::new("xdotool")
                                     .args(&["search", "--name", r"Telegram \("])
                                     .output()
@@ -165,7 +163,7 @@ fn main() {
     //let ac = "%{F#9baec8}";
     //let ac = "%{F#81a1c1}";
     loop {
-        println!(" {}%{{c}}{}%{{r}}{}{}{}{} ", nowplaying(fg, ac), window_title(), telegram_unread(fg, ac), battery(fg, ac), wifi_bssid(fg, ac), volume(fg, ac), clock(fg, ac));
+        println!(" {}%{{c}}{}%{{r}}{}{}{}{}{} ", nowplaying(fg, ac), window_title(), telegram_unread(fg, ac), battery(fg, ac), wifi_bssid(fg, ac), volume(fg, ac), clock(fg, ac));
         thread::sleep(time::Duration::from_millis(200));
     }
 }
