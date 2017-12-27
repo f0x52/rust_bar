@@ -3,105 +3,139 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::{thread, time};
 use std::process::Command;
+use regex::Regex;
 
 extern crate time as time_date;
+extern crate regex;
 
 fn battery(fg: &str, ac: &str) -> String {
-    let mut icon = String::from("");
-    let mut charge = String::new();
+    let is_charging = fs::read_dir("/sys/class/power_supply")
+        .unwrap()
+        .filter_map(|entry| entry.ok())
+        .filter(|file| file.path().to_str().unwrap().contains("AC"))
+        .any(|ac_supply| {
+            let mut ac = ac_supply.path();
+            ac.push("online");
+            let mut f = File::open(ac).expect("file not found");
 
-    let power = fs::read_dir("/sys/class/power_supply").unwrap();
-    let ac_supplies = power.filter(|x| x.as_ref().unwrap().path().to_str().unwrap().contains("AC")); 
-    for ac_supply in ac_supplies {
-        let ac = ac_supply.unwrap().path();
-        let ac = ac.to_str().unwrap();
+            let mut contents = String::new();
+            f.read_to_string(&mut contents)
+                .expect("something went wrong reading the ac status");
+            contents.contains("1")
+        });
+    let icon = if is_charging {
+        ""
+    } else {
+        ""
+    };
 
-        let filename = format!("{}/online", ac);
-        let mut f = File::open(filename).expect("file not found");
-        
-        let mut contents = String::new();
-        f.read_to_string(&mut contents)
-            .expect("something went wrong reading the battery capacity");
+    let batteries = fs::read_dir("/sys/class/power_supply")
+        .unwrap()
+        .filter_map(|entry| entry.ok())
+        .filter(|file| file.path().to_str().unwrap().contains("BAT"))
+        .map(|battery| {
+            let mut bat = battery.path();
+            bat.push("capacity");
+            let mut f = File::open(bat).expect("file not found");
 
-        if contents.contains("1") {
-            icon = String::from("");
-        }
-    }
+            let mut contents = String::new();
+            f.read_to_string(&mut contents)
+                .expect("something went wrong reading the battery capacity");
+            let capacity = contents.trim().to_string();
+            format!("{}% ", capacity)
+        })
+        .fold("".to_string(), |mut values, cap| {values.push_str(&cap); values});
+    let battery_cap = format!("{}", batteries);
 
-    let power1 = fs::read_dir("/sys/class/power_supply").unwrap();
-    let batteries = power1.filter(|x| x.as_ref().unwrap().path().to_str().unwrap().contains("BAT")); 
-    for battery in batteries {
-        let bat = battery.unwrap().path();
-        let bat = bat.to_str().unwrap();
-
-        let filename = format!("{}/capacity", bat);
-        let mut f = File::open(filename).expect("file not found");
-        
-        let mut contents = String::new();
-        f.read_to_string(&mut contents)
-            .expect("something went wrong reading the battery capacity");
-        charge = format!("{}{}% ", charge, contents.trim());
-    }
-
-    format!("{}{}{}{}", ac, icon, fg, charge)
+    format!("{}{}{}{}", ac, icon, fg, battery_cap)
 }
 
 fn nowplaying(fg: &str, ac: &str) -> String {
+    let replacements = ["YouTube", " (Official Video)", " (HQ)", " (Official Video)", " [FULL MUSIC VIDEO]", " (320kbps)", " (with lyrics)", " - Full album", " [Official Music Video]", "(Official Music Video)", "(Lyric Video)", "(lyric video)", "[HQ]", "High Quality Sound", "HD 720p", "[Lyrics]", "(MUSIC VIDEO)"];
+    let re = Regex::new(r"\(\d+\) ").unwrap();
     let process = Command::new("xdotool")
-                                    .args(&["search", "--name", "YouTube"])
+                                    .args(&["search", "--classname", "youtube.com"])
                                     .output()
-                                    .ok()
-                                    .expect("Failed to execute");
-    let window_ids = std::string::String::from_utf8(process.stdout)
-                                    .ok()
+                                    .unwrap();
+    let window_ids = String::from_utf8(process.stdout)
                                     .expect("Failed to read");
-    let window_id = window_ids.split_whitespace().next().unwrap();
+    if window_ids.split_whitespace().next().is_some() {
+        let window_id = window_ids.split_whitespace().next().unwrap();
 
+        let process = Command::new("xdotool")
+                                        .args(&["getwindowname", window_id])
+                                        .output()
+                                        .expect("Failed to execute");
+        let out = std::string::String::from_utf8(process.stdout)
+                                        .expect("Failed to read");
+        let mut playing = out.trim().replace(" - YouTube", "");
+        playing = re.replace_all(&playing, "").into_owned();
+        for replacement in replacements.iter() {
+            playing = playing.replace(replacement, "");
+        }
+        format!("{}{}{}", ac, fg, playing)
+    } else {
+        format!("")
+    }
+}
+
+fn telegram_unread(fg: &str, ac: &str) -> String {
+    let re = Regex::new(r"\((\d+)\)").unwrap();
+    let mut output = String::new();
+    if fg && ac {
+    }
     let process = Command::new("xdotool")
-                                    .args(&["getwindowname", window_id])
+                                    .args(&["search", "--name", r"Telegram \("])
                                     .output()
-                                    .ok()
-                                    .expect("Failed to execute");
-    let out = std::string::String::from_utf8(process.stdout)
-                                    .ok()
+                                    .unwrap();
+    let telegram_ids = String::from_utf8(process.stdout)
                                     .expect("Failed to read");
-    let playing = out.trim().replace(" - YouTube - Waterfox", "");
-    format!("{}{}{}", ac, fg, playing)
+    if telegram_ids.split_whitespace().next().is_some() {
+        let telegram_id = telegram_ids.split_whitespace().next().unwrap();
+
+        let process = Command::new("xdotool")
+                                        .args(&["getwindowname", telegram_id])
+                                        .output()
+                                        .expect("Failed to execute");
+        let out = std::string::String::from_utf8(process.stdout)
+                                        .expect("Failed to read");
+        let caps = re.captures(out.as_str()).unwrap();
+        let unread = caps.get(1).map_or("", |m| m.as_str());
+        if unread != "" {
+            output = format!("{}{}{}", ac, fg, unread);
+        }
+    }
+    output
 }
 
 fn wifi_bssid(fg: &str, ac: &str) -> String {
     let process = Command::new("get_wifi_bssid")
                                     .output()
-                                    .ok()
                                     .expect("Failed to execute");
     let bssid = std::string::String::from_utf8(process.stdout)
-                                    .ok()
                                     .expect("Failed to read");
     format!("{}{}{} ", ac, fg, bssid.trim())
 }
 
 fn volume(fg: &str, ac: &str) -> String {
-    let mut icon = "";
     let process = Command::new("pamixer")
                                     .arg("--get-volume")
                                     .output()
-                                    .ok()
                                     .expect("Failed to execute");
     let volume = std::string::String::from_utf8(process.stdout)
-                                    .ok()
                                     .expect("Failed to read");
 
     let mute_process = Command::new("pamixer")
                                     .arg("--get-mute")
                                     .output()
-                                    .ok()
                                     .expect("Failed to execute");
     let muted = std::string::String::from_utf8(mute_process.stdout)
-                                    .ok()
                                     .expect("Failed to read");
-    if muted.trim() == "true" {
-        icon = "";
-    }
+    let icon = if muted.trim() == "true" {
+        ""
+    } else {
+        ""
+    };
 
 
     format!("{}{}{}{}% ", ac, icon, fg, volume.trim())
@@ -111,10 +145,8 @@ fn window_title() -> String {
     let process = Command::new("xdotool")
                                     .args(&["getwindowfocus", "getwindowname"])
                                     .output()
-                                    .ok()
                                     .expect("Failed to execute");
     let out = std::string::String::from_utf8(process.stdout)
-                                    .ok()
                                     .expect("Failed to read");
     format!("{}", out.trim())
 }
@@ -126,10 +158,14 @@ fn clock(fg: &str, ac: &str) -> String {
 
 fn main() {
     let fg = "%{F#d9e1e8}";
-    let ac = "%{F#9baec8}";
-    //print!("{} {}\n", battery(fg, ac), clock(fg, ac));
+    //let ac = "%{F#cc6666}";
+    let ac = "%{F#bd0a41}";
+    //let fg = "%{F#d9e1e8}";
+    //let ac = "%{F#600b0b}";
+    //let ac = "%{F#9baec8}";
+    //let ac = "%{F#81a1c1}";
     loop {
-        println!("{}%{{c}}{}%{{r}}{}{}{}{} ", nowplaying(fg, ac), window_title(), battery(fg, ac), wifi_bssid(fg, ac), volume(fg, ac), clock(fg, ac));
+        println!(" {}%{{c}}{}%{{r}}{}{}{}{} ", nowplaying(fg, ac), window_title(), telegram_unread(fg, ac), battery(fg, ac), wifi_bssid(fg, ac), volume(fg, ac), clock(fg, ac));
         thread::sleep(time::Duration::from_millis(200));
     }
 }

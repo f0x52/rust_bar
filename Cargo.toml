@@ -5,3 +5,4 @@ authors = ["f0x <f0x@firemail.cc>"]
 
 [dependencies]
 time = "0.1"
+regex = "0.2"
