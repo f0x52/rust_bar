@@ -100,7 +100,7 @@ fn telegram_unread(fg: &str, ac: &str) -> String {
         let caps = re.captures(out.as_str()).unwrap();
         let unread = caps.get(1).map_or("", |m| m.as_str());
         if unread != "" {
-            output = format!("{}{}{}", ac, fg, unread);
+            output = format!("{}{}{} ", ac, fg, unread);
         }
     }
     output
