@@ -6,3 +6,5 @@ authors = ["f0x <f0x@firemail.cc>"]
 [dependencies]
 time = "0.1"
 regex = "0.2"
+serde_json = "1.0.40"
+shellexpand = "1.0.0"
