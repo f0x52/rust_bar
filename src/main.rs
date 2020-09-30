@@ -13,44 +13,28 @@ extern crate shellexpand;
 use serde_json::Value;
 
 static PADDING: &'static str = "%{O10}";
+static PADDING_INT: &'static str = "%{O4}";
+
 fn nowplaying(re: &regex::Regex) -> String {
     let icon = "";
-    //first check if cmus is playing
-    //
-    let process = Command::new("cmus_playing")
-                                .output()
-                                .expect("failed to execute cmus_playing");
-    let out = std::string::String::from_utf8(process.stdout)
-                                .expect("failed to read");
-    if out != "" {
-        return format!("{p}{}{}{p}", icon, out, p=PADDING);
-    }
 
-    let replacements = ["YouTube", " (Official Video)", " (HQ)", " (Official Video)", " [FULL MUSIC VIDEO]", " (320kbps)", " (with lyrics)", " - Full album", " [Official Music Video]", "(Official Music Video)", "(Lyric Video)", "(lyric video)", "[HQ]", "High Quality Sound", "HD 720p", "[Lyrics]", "(MUSIC VIDEO)", "(Drive Original Movie Soundtrack)", "(Official Audio)", "- Official Video", "(Audio)", " - OFFICIAL VIDEO", "(official video)", "Official Video"];
-    let process = Command::new("xdotool")
-                                    .args(&["search", "--name", "YouTube"])
+    let process = Command::new("playerctl")
+                                    .args(&["metadata", "-f", " {{artist}}|SEPARATOR|{{title}}"])
                                     .output()
                                     .unwrap();
-    let window_ids = String::from_utf8(process.stdout)
-                                    .expect("Failed to read");
-    if window_ids.split_whitespace().next().is_some() {
-        let window_id = window_ids.split_whitespace().next().unwrap();
+    let playing = String::from_utf8(process.stdout)
+                                    .expect("Failed to read playerctl");
 
-        let process = Command::new("xdotool")
-                                        .args(&["getwindowname", window_id])
-                                        .output()
-                                        .expect("Failed to execute");
-        let out = std::string::String::from_utf8(process.stdout)
-                                        .expect("Failed to read");
-        let mut playing = out.trim().replace(" - YouTube Music - Mozilla Firefox", "");
-        playing = re.replace_all(&playing, "").into_owned();
-        for replacement in replacements.iter() {
-            playing = playing.replace(replacement, "");
-        }
-        format!("{}{p}{}", icon, playing, p = PADDING)
-    } else {
-        format!("")
+    let info: Vec<&str> = playing.trim().split("|SEPARATOR|").collect();
+    let artist = info[0].replace(" - Topic", "");
+    let title = info[1].replace(" | Free Listening on SoundCloud", "");
+
+    let mut formatted = title.to_string();
+
+    if artist.len() > 0 {
+        formatted = format!("{} - {}", artist, title);
     }
+    format!("{}{p}{}", icon, formatted, p = PADDING_INT)
 }
 
 fn window_title() -> String {
@@ -85,7 +69,7 @@ fn telegram_unread(re: &regex::Regex) -> String {
             let caps = re.captures(out.as_str()).unwrap();
             let unread = caps.get(1).map_or("", |m| m.as_str());
             if unread != "" {
-                output = format!("{}{p}{}", icon, unread, p = PADDING);
+                output = format!("{}{p}{}", icon, unread, p = PADDING_INT);
             }
         }
     }
@@ -131,14 +115,14 @@ fn battery() -> String {
         .fold("".to_string(), |mut values, cap| {values.push_str(&cap); values});
     let battery_cap = format!("{}", batteries);
 
-    format!("{}{p}{}", icon, battery_cap, p = PADDING)
+    format!("{}{p}{}", icon, battery_cap, p = PADDING_INT)
 }
 
 fn wifi(re: &regex::Regex) -> String {
     let icon = "";
     let mut ssid = "disconnected";
     let process = Command::new("wpa_cli")
-                                    .arg("status")
+                                    .args(&["-i", "wlan0", "status"])
                                     .output()
                                     .expect("Failed to execute wpa_cli");
     let status = std::string::String::from_utf8(process.stdout)
@@ -152,7 +136,7 @@ fn wifi(re: &regex::Regex) -> String {
             ssid = matched;
         }
     }
-    format!("{}{p}{}", icon, ssid, p = PADDING)
+    format!("{}{p}{}", icon, ssid, p = PADDING_INT)
 }
 
 fn volume() -> String {
@@ -176,13 +160,13 @@ fn volume() -> String {
     };
 
 
-    format!("{}{p}{}% ", icon, volume.trim(), p = PADDING)
+    format!("{}{p}{}% ", icon, volume.trim(), p = PADDING_INT)
 }
 
 fn clock() -> String {
     let icon = "";
     let time = time_date::strftime("%m-%d %R", &time_date::now()).unwrap();
-    format!("{}{p}{}", icon, time, p = PADDING)
+    format!("{}{p}{}", icon, time, p = PADDING_INT)
 }
 
 fn get_wal() -> Value {
